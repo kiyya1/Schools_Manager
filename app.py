@@ -1,183 +1,213 @@
 import os
-import sys
-import string
+from io import BytesIO
 from datetime import datetime
-from flask import Flask, render_template, request, redirect, url_for, flash, session
+from flask import Flask, render_template, request, redirect, url_for, flash, session, send_file, make_response
 from flask_sqlalchemy import SQLAlchemy
-from werkzeug.security import generate_password_hash, check_password_hash
+from xhtml2pdf import pisa
 
 app = Flask(__name__)
-app.secret_key = 'kiyya_secret_key_123'
+app.secret_key = 'super-secret-key-change-this'
 
-# Database Configuration (SQLite)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///students.db'
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(BASE_DIR, 'database.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
 
-# Database Models
-class User(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(80), unique=True, nullable=False)
-    password_hash = db.Column(db.String(200), nullable=False)
-
-class FeeSetting(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    tuition_fee = db.Column(db.Float, default=3000.0)
-    bus_fee = db.Column(db.Float, default=1500.0)
-
 class Student(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     full_name = db.Column(db.String(100), nullable=False)
-    grade = db.Column(db.String(20), nullable=False)
-    section = db.Column(db.String(10), default='A')
-    phone = db.Column(db.String(20), nullable=True)
-    bus_service = db.Column(db.String(50), default='አልፈልግም (No Bus)')
-    bus_fee = db.Column(db.Float, default=0.0)
-    tuition_fee = db.Column(db.Float, default=0.0)
-    total_expected = db.Column(db.Float, default=0.0)
-    amount_paid = db.Column(db.Float, default=0.0)
-    balance_due = db.Column(db.Float, default=0.0)
+    grade = db.Column(db.String(50), nullable=False)
+    section = db.Column(db.String(10), nullable=False, default='A')
+    phone = db.Column(db.String(20), nullable=False)
+    bus_service = db.Column(db.String(50), nullable=True)
     address = db.Column(db.String(200), nullable=True)
-    payment_method = db.Column(db.String(50), nullable=True)
+    payment_type = db.Column(db.String(50), nullable=False)
+    payment_method = db.Column(db.String(50), nullable=False)
     ft_approval_no = db.Column(db.String(100), nullable=True)
-    payment_type = db.Column(db.String(50), nullable=True)
+    amount_paid = db.Column(db.Float, nullable=False, default=0.0)
     status = db.Column(db.String(20), default='Pending')
-    date_registered = db.Column(db.String(50), default=lambda: datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+class Setting(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    monthly_fee = db.Column(db.Float, default=3000.0)
+    term_fee = db.Column(db.Float, default=8000.0)
+    bus_fee = db.Column(db.Float, default=1500.0)
+    class_capacity = db.Column(db.Integer, default=30)
+    default_address = db.Column(db.String(200), default="አቃቂ ቃሊቲ ወረዳ 09")
+
+class AdminUser(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(50), unique=True, nullable=False)
+    password = db.Column(db.String(100), nullable=False)
 
 with app.app_context():
     db.create_all()
-    # Default Admin (admin / admin123)
-    if not User.query.filter_by(username='admin').first():
-        db.session.add(User(username='admin', password_hash=generate_password_hash('admin123')))
-    # Default Fees
-    if not db.session.get(FeeSetting, 1):
-        db.session.add(FeeSetting(id=1, tuition_fee=3000.0, bus_fee=1500.0))
+    if not AdminUser.query.filter_by(username='admin').first():
+        db.session.add(AdminUser(username='admin', password='adminpassword'))
+    if not Setting.query.first():
+        db.session.add(Setting())
     db.session.commit()
 
-# --- Helper Function ---
-def get_fees():
-    setting = db.session.get(FeeSetting, 1)
-    if setting:
-        return setting.tuition_fee, setting.bus_fee
-    return 3000.0, 1500.0
+def get_next_section(grade, capacity):
+    existing_count = Student.query.filter_by(grade=grade).count()
+    section_index = existing_count // capacity
+    return chr(65 + section_index)
 
-# --- Public Routes ---
 @app.route('/')
-def register_page():
-    tuition, bus = get_fees()
-    return render_template('register.html', bus_fee=bus, tuition_fee=tuition)
+@app.route('/register')
+def register():
+    settings = Setting.query.first()
+    return render_template('register.html', settings=settings)
 
 @app.route('/add_student', methods=['POST'])
 def add_student():
-    tuition, bus = get_fees()
-    
-    full_name = request.form.get('full_name')
+    settings = Setting.query.first()
+    capacity = settings.class_capacity if settings else 30
+
     grade = request.form.get('grade')
-    phone = request.form.get('phone')
-    bus_choice = request.form.get('bus_service', 'አልፈልግም (No Bus)')
-    address = request.form.get('address')
-    payment_method = request.form.get('payment_method')
-    ft_approval_no = request.form.get('ft_approval_no')
-    payment_type = request.form.get('payment_type')
-    amount_paid = float(request.form.get('amount_paid', 0))
-    
-    # ራስ-ሰር የባስ ክፍያ እና ጠቅላላ ሂሳብ ስሌት
-    actual_bus_fee = bus if bus_choice == 'እፈልጋለሁ (Yes Bus)' else 0.0
-    total_expected = tuition + actual_bus_fee
-    balance_due = total_expected - amount_paid
-    
-    existing_count = Student.query.filter_by(grade=grade).count()
-    section_index = existing_count // 30
-    assigned_section = string.ascii_uppercase[section_index % 26] 
+    assigned_section = get_next_section(grade, capacity)
 
     new_student = Student(
-        full_name=full_name, grade=grade, section=assigned_section,
-        phone=phone, bus_service=bus_choice, bus_fee=actual_bus_fee,
-        tuition_fee=tuition, total_expected=total_expected,
-        amount_paid=amount_paid, balance_due=balance_due,
-        address=address, payment_method=payment_method,
-        ft_approval_no=ft_approval_no, payment_type=payment_type,
-        status='Pending'
+        full_name=request.form.get('full_name'),
+        grade=grade,
+        section=assigned_section,
+        phone=request.form.get('phone'),
+        bus_service=request.form.get('bus_service'),
+        address=request.form.get('address'),
+        payment_type=request.form.get('payment_type'),
+        payment_method=request.form.get('payment_method'),
+        ft_approval_no=request.form.get('ft_approval_no'),
+        amount_paid=float(request.form.get('amount_paid', 0))
     )
     db.session.add(new_student)
     db.session.commit()
-    
-    flash(f'የተማሪ {full_name} ምዝገባ ተጠናቋል! ጠቅላላ የሚፈለግበት፦ {total_expected} ETB', 'success')
-    return redirect(url_for('register_page'))
 
-# --- Auth Routes ---
+    flash('ተማሪው በስኬት ተመዝግቧል!', 'success')
+    return redirect(url_for('view_receipt', student_id=new_student.id))
+
+@app.route('/receipt/<int:student_id>')
+def view_receipt(student_id):
+    student = Student.query.get_or_404(student_id)
+    settings = Setting.query.first()
+    
+    base_fee = (settings.term_fee if settings else 8000.0) if student.payment_type == 'Term Fee' else (settings.monthly_fee if settings else 3000.0)
+    bus_fee = (settings.bus_fee if settings else 1500.0) if (student.bus_service and ('Bus Needed' in student.bus_service or 'እፈልጋለሁ' in student.bus_service)) else 0.0
+    total_expected = base_fee + bus_fee
+    remaining_balance = max(0.0, total_expected - student.amount_paid)
+
+    return render_template('receipt.html', student=student, settings=settings, base_fee=base_fee, bus_fee=bus_fee, total_expected=total_expected, remaining_balance=remaining_balance)
+
+@app.route('/download_receipt_pdf/<int:student_id>')
+def download_receipt_pdf(student_id):
+    student = Student.query.get_or_404(student_id)
+    settings = Setting.query.first()
+    
+    base_fee = (settings.term_fee if settings else 8000.0) if student.payment_type == 'Term Fee' else (settings.monthly_fee if settings else 3000.0)
+    bus_fee = (settings.bus_fee if settings else 1500.0) if (student.bus_service and ('Bus Needed' in student.bus_service or 'እፈልጋለሁ' in student.bus_service)) else 0.0
+    total_expected = base_fee + bus_fee
+    remaining_balance = max(0.0, total_expected - student.amount_paid)
+
+    rendered_html = render_template('receipt.html', student=student, settings=settings, base_fee=base_fee, bus_fee=bus_fee, total_expected=total_expected, remaining_balance=remaining_balance, is_pdf=True)
+    
+    pdf_out = BytesIO()
+    pisa_status = pisa.CreatePDF(BytesIO(rendered_html.encode('utf-8')), dest=pdf_out)
+    
+    if pisa_status.err:
+        return "PDF መፍጠር አልተቻለም", 500
+
+    response = make_response(pdf_out.getvalue())
+    response.headers['Content-Type'] = 'application/pdf'
+    response.headers['Content-Disposition'] = f'attachment; filename=Receipt_{student.id}.pdf'
+    return response
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        user = User.query.filter_by(username=request.form.get('username')).first()
-        if user and check_password_hash(user.password_hash, request.form.get('password')):
-            session['user_id'] = user.id
-            session['username'] = user.username
-            return redirect(url_for('admin_dashboard'))
-        flash('የተሳሳተ Username ወይም Password!', 'danger')
+        user = AdminUser.query.filter_by(username=request.form.get('username'), password=request.form.get('password')).first()
+        if user:
+            session['logged_in'] = True
+            return redirect('/admin')
+        flash('የተሳሳተ የተጠቃሚ ስም ወይም የይለፍ ቃል!', 'danger')
     return render_template('login.html')
-
-@app.route('/admin')
-def admin_dashboard():
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-    tuition, bus = get_fees()
-    students = Student.query.order_by(Student.id.desc()).all()
-    return render_template('admin.html', students=students, tuition_fee=tuition, bus_fee=bus)
-
-@app.route('/update_fees', methods=['POST'])
-def update_fees():
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-    setting = db.session.get(FeeSetting, 1)
-    if setting:
-        setting.tuition_fee = float(request.form.get('tuition_fee', 3000))
-        setting.bus_fee = float(request.form.get('bus_fee', 1500))
-        db.session.commit()
-        flash('የክፍያ ዋጋዎች በስኬት ተሻሽለዋል!', 'success')
-    return redirect(url_for('admin_dashboard'))
-
-@app.route('/receipt/<int:id>')
-def print_receipt(id):
-    student = db.session.get(Student, id)
-    if not student:
-        flash('ተማሪው አልተገኘም!', 'danger')
-        return redirect(url_for('admin_dashboard'))
-    return render_template('receipt.html', student=student)
-
-@app.route('/change_password', methods=['POST'])
-def change_password():
-    if 'user_id' not in session: 
-        return redirect(url_for('login'))
-    user = db.session.get(User, session['user_id'])
-    old_pw = request.form.get('old_password')
-    new_pw = request.form.get('new_password')
-    
-    if user and check_password_hash(user.password_hash, old_pw):
-        user.password_hash = generate_password_hash(new_pw)
-        db.session.commit()
-        flash('የይለፍ ቃልህ በስኬት ተቀይሯል!', 'success')
-    else:
-        flash('የድሮው የይለፍ ቃል የተሳሳተ ነው!', 'danger')
-    return redirect(url_for('admin_dashboard'))
-
-@app.route('/delete_student/<int:id>')
-def delete_student(id):
-    if 'user_id' not in session: 
-        return redirect(url_for('login'))
-    student = db.session.get(Student, id)
-    if student:
-        db.session.delete(student)
-        db.session.commit()
-        flash(f'የተማሪ {student.full_name} መረጃ ተሰርዟል!', 'warning')
-    return redirect(url_for('admin_dashboard'))
 
 @app.route('/logout')
 def logout():
-    session.clear()
-    flash('ወጥተዋል!', 'info')
-    return redirect(url_for('login'))
+    session.pop('logged_in', None)
+    return redirect('/login')
+
+@app.route('/admin')
+def admin():
+    if not session.get('logged_in'):
+        return redirect('/login')
+
+    settings = Setting.query.first()
+    if not settings:
+        settings = Setting()
+        db.session.add(settings)
+        db.session.commit()
+
+    students = Student.query.order_by(Student.id.desc()).all()
+    total_students = len(students)
+    total_paid = sum(s.amount_paid for s in students if s.amount_paid)
+    
+    student_data = []
+    total_expected = 0.0
+
+    for s in students:
+        base_fee = settings.term_fee if s.payment_type == 'Term Fee' else settings.monthly_fee
+        bus_addon = settings.bus_fee if (s.bus_service and ('Bus Needed' in s.bus_service or 'እፈልጋለሁ' in s.bus_service)) else 0.0
+        expected = base_fee + bus_addon
+        remaining = max(0.0, expected - s.amount_paid)
+
+        total_expected += expected
+        student_data.append({'student': s, 'expected': expected, 'paid': s.amount_paid, 'remaining': remaining})
+
+    total_unpaid = max(0.0, total_expected - total_paid)
+
+    return render_template('admin.html', student_data=student_data, total_students=total_students, total_expected=total_expected, total_paid=total_paid, total_unpaid=total_unpaid, settings=settings)
+
+@app.route('/update_settings', methods=['POST'])
+def update_settings():
+    if not session.get('logged_in'):
+        return redirect('/login')
+    settings = Setting.query.first()
+    if not settings:
+        settings = Setting()
+        db.session.add(settings)
+
+    settings.monthly_fee = float(request.form.get('monthly_fee', 3000))
+    settings.term_fee = float(request.form.get('term_fee', 8000))
+    settings.bus_fee = float(request.form.get('bus_fee', 1500))
+    settings.class_capacity = int(request.form.get('class_capacity', 30))
+    db.session.commit()
+    flash('ቅንብሮች በስኬት ተቀይረዋል!', 'success')
+    return redirect('/admin')
+
+@app.route('/approve_student/<int:id>')
+def approve_student(id):
+    if not session.get('logged_in'): return redirect('/login')
+    s = Student.query.get_or_404(id)
+    s.status = 'Approved'
+    db.session.commit()
+    return redirect('/admin')
+
+@app.route('/reject_student/<int:id>')
+def reject_student(id):
+    if not session.get('logged_in'): return redirect('/login')
+    s = Student.query.get_or_404(id)
+    s.status = 'Rejected'
+    db.session.commit()
+    return redirect('/admin')
+
+@app.route('/delete_student/<int:id>')
+def delete_student(id):
+    if not session.get('logged_in'): return redirect('/login')
+    s = Student.query.get_or_404(id)
+    db.session.delete(s)
+    db.session.commit()
+    return redirect('/admin')
 
 if __name__ == '__main__':
-    app.run(host='127.0.0.1', port=5000, debug=True)
+    app.run(debug=True)

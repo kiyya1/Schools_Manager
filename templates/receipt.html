@@ -1,89 +1,109 @@
 <!DOCTYPE html>
 <html lang="am">
 <head>
-  <meta charset="UTF-8">
-  <title>የምዝገባ ደረሰኝ — {{ student.full_name }}</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-  <style>
-    body { background-color: #fff; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-    .receipt-box { border: 2px dashed #0d6efd; padding: 25px; border-radius: 10px; max-width: 600px; margin: 30px auto; }
-    @media print {
-      .no-print { display: none; }
-      .receipt-box { border: 1px solid #000; }
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ደረሰኝ #REC-{{ "%04d"|format(student.id) }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f4f6f9; font-family: Arial, sans-serif; color: #212529; }
+        .receipt-card { max-width: 650px; margin: 30px auto; background: #ffffff; border-radius: 12px; padding: 30px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        .receipt-header { border-bottom: 2px dashed #dee2e6; padding-bottom: 15px; margin-bottom: 20px; }
+        .receipt-footer { border-top: 2px dashed #dee2e6; padding-top: 15px; margin-top: 20px; }
+        .badge-custom { padding: 5px 10px; border-radius: 4px; background-color: #0d6efd; color: white; font-weight: bold; }
+        @media print {
+            body { background-color: #ffffff !important; }
+            .no-print { display: none !important; }
+            .receipt-card { box-shadow: none !important; border: none !important; margin: 0 !important; padding: 0 !important; width: 100% !important; max-width: 100% !important; }
+        }
+    </style>
 </head>
-<body onload="window.print()">
+<body>
 
-  <div class="container">
-    <div class="receipt-box shadow-sm">
-      <div class="text-center mb-3">
-        <h3 class="fw-bold text-primary mb-1">🎓 WABI SCHOOL</h3>
-        <p class="text-muted mb-0">የተማሪ ምዝገባ እና ክፍያ ደረሰኝ (Official Receipt)</p>
-        <small class="text-secondary">ቀን፦ {{ student.date_registered }}</small>
-      </div>
-      <hr>
-
-      <table class="table table-borderless">
-        <tr>
-          <th>የተማሪ ስም፦</th>
-          <td>{{ student.full_name }}</td>
-        </tr>
-        <tr>
-          <th>የተመደበበት ክፍል፦</th>
-          <td>Grade {{ student.grade }} (Section {{ student.section }})</td>
-        </tr>
-        <tr>
-          <th>ስልክ ቁጥር፦</th>
-          <td>{{ student.phone }}</td>
-        </tr>
-        <tr>
-          <th>የስኩል ባስ አገልግሎት፦</th>
-          <td>{{ student.bus_service }}</td>
-        </tr>
-        <tr>
-          <th>የክፍያ መንገድ (Payment Method)፦</th>
-          <td>{{ student.payment_method }} (Ref: <code>{{ student.ft_approval_no }}</code>)</td>
-        </tr>
-      </table>
-
-      <hr>
-
-      <div class="bg-light p-3 rounded mb-3">
-        <div class="d-flex justify-content-between mb-1">
-          <span>ወርሃዊ የትምህርት ክፍያ፦</span>
-          <strong>{{ student.tuition_fee }} ETB</strong>
-        </div>
-        <div class="d-flex justify-content-between mb-1">
-          <span>ወርሃዊ የስኩል ባስ ክፍያ፦</span>
-          <strong>{{ student.bus_fee }} ETB</strong>
-        </div>
-        <div class="d-flex justify-content-between fw-bold text-primary border-top pt-2 fs-5">
-          <span>ጠቅላላ የሚፈለግበት (Total)፦</span>
-          <span>{{ student.total_expected }} ETB</span>
-        </div>
-        <div class="d-flex justify-content-between text-success fw-bold">
-          <span>አሁን የከፈለው (Paid)፦</span>
-          <span>{{ student.amount_paid }} ETB</span>
-        </div>
-        {% if student.balance_due > 0 %}
-        <div class="d-flex justify-content-between text-danger fw-bold">
-          <span>ቀሪ ዕዳ (Balance Due)፦</span>
-          <span>{{ student.balance_due }} ETB</span>
+    <div class="container">
+        {% if not is_pdf %}
+        <div class="text-center mt-4 mb-2 no-print">
+            <button onclick="window.print()" class="btn btn-primary btn-lg me-2 fw-bold mb-2">🖨️ ደረሰኝ አትም (Print)</button>
+            <a href="/download_receipt_pdf/{{ student.id }}" class="btn btn-success btn-lg me-2 fw-bold mb-2">📥 PDF አውርድ (Download PDF)</a>
+            <a href="/" class="btn btn-outline-secondary btn-lg mb-2">ወደ ምዝገባ ተመለስ</a>
         </div>
         {% endif %}
-      </div>
 
-      <div class="text-center mt-4">
-        <small class="text-muted">ይህ ደረሰኝ በኮምፒዩተር በራስ-ሰር የተዘጋጀ ነው። ሰነዱ ህጋዊ ነው።</small>
-      </div>
+        <div class="receipt-card">
+            <div class="receipt-header text-center">
+                <h2 class="fw-bold text-primary mb-1">🎓 Wabi School</h2>
+                <p class="text-muted mb-1">{{ settings.default_address if settings else 'አቃቂ ቃሊቲ ወረዳ 09' }}</p>
+                <h4 class="fw-bold text-dark mt-2 mb-0">የክፍያ ደረሰኝ (Official Receipt)</h4>
+            </div>
 
-      <div class="text-center mt-3 no-print">
-        <button onclick="window.print()" class="btn btn-primary fw-bold me-2"><i class="bi bi-printer"></i> አትም (Print)</button>
-        <button onclick="window.close()" class="btn btn-secondary fw-bold">ዝጋ (Close)</button>
-      </div>
+            <div class="row mb-3">
+                <div class="col-6">
+                    <small class="text-muted d-block">የደረሰኝ ቁጥር (Receipt No):</small>
+                    <strong class="fs-6 text-primary">#REC-{{ "%04d"|format(student.id) }}</strong>
+                </div>
+                <div class="col-6 text-end">
+                    <small class="text-muted d-block">ቀን (Date):</small>
+                    <strong>{{ student.created_at.strftime('%Y-%m-%d %H:%M') if student.created_at else '2026-07-27' }}</strong>
+                </div>
+            </div>
+
+            <div class="bg-light p-3 rounded mb-4 border">
+                <div class="row g-2">
+                    <div class="col-6"><strong>የተማሪው ስም:</strong> {{ student.full_name }}</div>
+                    <div class="col-6"><strong>ክፍል & ሴክሽን:</strong> <span class="badge-custom">{{ student.grade }} - {{ student.section }}</span></div>
+                    <div class="col-6"><strong>ስልክ ቁጥር:</strong> {{ student.phone }}</div>
+                    <div class="col-6"><strong>የባስ አገልግሎት:</strong> {{ student.bus_service }}</div>
+                </div>
+            </div>
+
+            <table class="table table-bordered align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>የክፍያ ዝርዝር (Description)</th>
+                        <th class="text-end">መጠን (ETB)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>መሰረታዊ የትምህርት ክፍያ ({{ student.payment_type }})</td>
+                        <td class="text-end">{{ "{:,.2f}".format(base_fee) }}</td>
+                    </tr>
+                    {% if bus_fee > 0 %}
+                    <tr>
+                        <td>የትራንስፖርት / ባስ ክፍያ</td>
+                        <td class="text-end">{{ "{:,.2f}".format(bus_fee) }}</td>
+                    </tr>
+                    {% endif %}
+                    <tr class="fw-bold table-active">
+                        <td>ጠቅላላ የሚጠበቅ ክፍያ (Total Expected)</td>
+                        <td class="text-end">{{ "{:,.2f}".format(total_expected) }}</td>
+                    </tr>
+                    <tr class="text-success fw-bold">
+                        <td>የተከፈለ መጠን (Amount Paid) [{{ student.payment_method }}]</td>
+                        <td class="text-end">{{ "{:,.2f}".format(student.amount_paid) }}</td>
+                    </tr>
+                    {% if remaining_balance > 0 %}
+                    <tr class="text-danger fw-bold">
+                        <td>ቀሪ ያልተከፈለ (Remaining Balance)</td>
+                        <td class="text-end">{{ "{:,.2f}".format(remaining_balance) }}</td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+
+            {% if student.ft_approval_no %}
+            <div class="mb-3">
+                <small class="text-muted">የትራንዛክሽን / Approval No:</small>
+                <code>{{ student.ft_approval_no }}</code>
+            </div>
+            {% endif %}
+
+            <div class="receipt-footer text-center">
+                <p class="fw-bold mb-1">ስለመረጡን እናመሰግናለን!</p>
+                <small class="text-muted">ይህ ደረሰኝ በሲስተም በራስ-ሰር የተዘጋጀ ህጋዊ ማስረጃ ነው።</small>
+            </div>
+        </div>
     </div>
-  </div>
 
 </body>
 </html>
