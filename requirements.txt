@@ -1,1 +1,5 @@
 xhtml2pdf==0.2.15
+Flask
+Flask-SQLAlchemy
+xhtml2pdf
+gunicorn
