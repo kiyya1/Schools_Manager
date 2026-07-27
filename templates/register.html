@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="am">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>የተማሪዎች የመመዝገቢያ ፎርም</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+  <style>
+    body { background: #f4f6f9; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    .card-custom { border-radius: 12px; border: none; box-shadow: 0 5px 20px rgba(0,0,0,0.08); }
+    .header-box { background: #1f4e79; color: #ffffff; border-top-left-radius: 12px; border-top-right-radius: 12px; }
+  </style>
+</head>
+<body class="py-4">
+
+  <div class="container">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h4 class="fw-bold text-primary mb-0"><i class="bi bi-mortarboard-fill me-2"></i>Wabi School</h4>
+      <a href="/login" class="btn btn-outline-primary fw-bold btn-sm"><i class="bi bi-person-badge me-1"></i>Admin Login</a>
+    </div>
+
+    <div class="row justify-content-center">
+      <div class="col-lg-8">
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="alert alert-{{ category }} alert-dismissible fade show shadow-sm mb-4" role="alert">
+                <i class="bi bi-check-circle-fill me-2"></i> {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+              </div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
+        <div class="card card-custom">
+          <div class="p-4 text-center header-box">
+            <h3 class="fw-bold mb-1">የተማሪዎች የመመዝገቢያ ፎርም</h3>
+            <p class="mb-0 text-white-50">ወርሃዊ ትምህርት ክፍያ፦ {{ tuition_fee }} ETB | ወርሃዊ የስኩል ባስ ክፍያ፦ {{ bus_fee }} ETB</p>
+          </div>
+
+          <div class="card-body p-4 p-md-5 bg-white">
+            <form action="/add_student" method="POST">
+              
+              <!-- SECTION 1 -->
+              <h5 class="fw-bold text-primary mb-3 border-bottom pb-2"><i class="bi bi-person-fill me-2"></i>1. የተማሪው/ዋ መረጃ</h5>
+              <div class="row g-3 mb-4">
+                <div class="col-md-6">
+                  <label class="form-label fw-bold">የተማሪው ሙሉ ስም <span class="text-danger">*</span></label>
+                  <input type="text" name="full_name" class="form-control" placeholder="አበበ ከበደ ተሰማ" required>
+                </div>
+
+                <div class="col-md-6">
+                  <label class="form-label fw-bold">ክፍል (Grade) <span class="text-danger">*</span></label>
+                  <select name="grade" class="form-select" required>
+                    <option value="" disabled selected>ክፍል ይምረጡ...</option>
+                    <option value="1st Grade">1ኛ ክፍል (1st Grade)</option>
+                    <option value="2nd Grade">2ኛ ክፍል (2nd Grade)</option>
+                    <option value="3rd Grade">3ኛ ክፍል (3rd Grade)</option>
+                    <option value="4th Grade">4ኛ ክፍል (4th Grade)</option>
+                    <option value="5th Grade">5th Grade</option>
+                    <option value="6th Grade">6th Grade</option>
+                  </select>
+                </div>
+
+                <div class="col-md-6">
+                  <label class="form-label fw-bold">የወላጅ/አስመዝጋቢ ስልክ <span class="text-danger">*</span></label>
+                  <input type="tel" name="phone" class="form-control" placeholder="09........" required>
+                </div>
+
+                <div class="col-md-6">
+                  <label class="form-label fw-bold">የመኖሪያ አድራሻ</label>
+                  <input type="text" name="address" class="form-control" placeholder="አቃቂ ቃሊቲ ወረዳ 09">
+                </div>
+              </div>
+
+              <!-- SECTION 2 -->
+              <h5 class="fw-bold text-primary mb-3 border-bottom pb-2"><i class="bi bi-bus-front-fill me-2"></i>2. የስኩል ባስ አገልግሎት</h5>
+              <div class="mb-4">
+                <label class="form-label fw-bold">የስኩል ባስ አገልግሎት ይፈልጋሉ? (+{{ bus_fee }} ETB)</label>
+                <select name="bus_service" class="form-select">
+                  <option value="አልፈልግም (No Bus)">አልፈልግም (No Bus)</option>
+                  <option value="እፈልጋለሁ (Yes Bus)">እፈልጋለሁ (Yes Bus - {{ bus_fee }} ETB)</option>
+                </select>
+              </div>
+
+              <!-- SECTION 3 -->
+              <h5 class="fw-bold text-primary mb-3 border-bottom pb-2"><i class="bi bi-credit-card-fill me-2"></i>3. የክፍያ መረጃ</h5>
+              <div class="row g-3 mb-4">
+                <div class="col-md-6">
+                  <label class="form-label fw-bold">የክፍያ አይነት <span class="text-danger">*</span></label>
+                  <select name="payment_type" class="form-select" required>
+                    <option value="Monthly Fee">የወር ክፍያ</option>
+                    <option value="Term Fee">የተርም ክፍያ</option>
+                  </select>
+                </div>
+
+                <div class="col-md-6">
+                  <label class="form-label fw-bold">የከፈሉበት መንገድ <span class="text-danger">*</span></label>
+                  <select name="payment_method" class="form-select" required>
+                    <option value="CBE Birr / Commercial Bank of Ethiopia">የኢትዮጵያ ንግድ ባንክ (CBE)</option>
+                    <option value="Telebirr">ቴሌብር (Telebirr)</option>
+                    <option value="BOA (Bank of Abyssinia)">አቢሲንያ ባንክ</option>
+                    <option value="Awash Bank">አዋሽ ባንክ</option>
+                    <option value="Cash/በጥሬ ገንዘብ">በጥሬ ገንዘብ (Cash)</option>
+                  </select>
+                </div>
+
+                <div class="col-md-6">
+                  <label class="form-label fw-bold">የተከፈለ መጠን (ETB) <span class="text-danger">*</span></label>
+                  <input type="number" step="0.01" name="amount_paid" class="form-control" placeholder="3000" required>
+                </div>
+
+                <div class="col-md-6">
+                  <label class="form-label fw-bold">የትራንዛክሽን ቁጥር (FT / Ref No.) <span class="text-danger">*</span></label>
+                  <input type="text" name="ft_approval_no" class="form-control" placeholder="FT2412345678" required>
+                </div>
+              </div>
+
+              <div class="d-grid gap-2 mt-4">
+                <button type="submit" class="btn btn-primary btn-lg fw-bold shadow-sm">
+                  <i class="bi bi-send-check-fill me-2"></i>ምዝገባውን አጠናቅቅ
+                </button>
+              </div>
+
+            </form>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

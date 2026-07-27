@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="am">
+<head>
+  <meta charset="UTF-8">
+  <title>የምዝገባ ደረሰኝ — {{ student.full_name }}</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { background-color: #fff; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    .receipt-box { border: 2px dashed #0d6efd; padding: 25px; border-radius: 10px; max-width: 600px; margin: 30px auto; }
+    @media print {
+      .no-print { display: none; }
+      .receipt-box { border: 1px solid #000; }
+    }
+  </style>
+</head>
+<body onload="window.print()">
+
+  <div class="container">
+    <div class="receipt-box shadow-sm">
+      <div class="text-center mb-3">
+        <h3 class="fw-bold text-primary mb-1">🎓 WABI SCHOOL</h3>
+        <p class="text-muted mb-0">የተማሪ ምዝገባ እና ክፍያ ደረሰኝ (Official Receipt)</p>
+        <small class="text-secondary">ቀን፦ {{ student.date_registered }}</small>
+      </div>
+      <hr>
+
+      <table class="table table-borderless">
+        <tr>
+          <th>የተማሪ ስም፦</th>
+          <td>{{ student.full_name }}</td>
+        </tr>
+        <tr>
+          <th>የተመደበበት ክፍል፦</th>
+          <td>Grade {{ student.grade }} (Section {{ student.section }})</td>
+        </tr>
+        <tr>
+          <th>ስልክ ቁጥር፦</th>
+          <td>{{ student.phone }}</td>
+        </tr>
+        <tr>
+          <th>የስኩል ባስ አገልግሎት፦</th>
+          <td>{{ student.bus_service }}</td>
+        </tr>
+        <tr>
+          <th>የክፍያ መንገድ (Payment Method)፦</th>
+          <td>{{ student.payment_method }} (Ref: <code>{{ student.ft_approval_no }}</code>)</td>
+        </tr>
+      </table>
+
+      <hr>
+
+      <div class="bg-light p-3 rounded mb-3">
+        <div class="d-flex justify-content-between mb-1">
+          <span>ወርሃዊ የትምህርት ክፍያ፦</span>
+          <strong>{{ student.tuition_fee }} ETB</strong>
+        </div>
+        <div class="d-flex justify-content-between mb-1">
+          <span>ወርሃዊ የስኩል ባስ ክፍያ፦</span>
+          <strong>{{ student.bus_fee }} ETB</strong>
+        </div>
+        <div class="d-flex justify-content-between fw-bold text-primary border-top pt-2 fs-5">
+          <span>ጠቅላላ የሚፈለግበት (Total)፦</span>
+          <span>{{ student.total_expected }} ETB</span>
+        </div>
+        <div class="d-flex justify-content-between text-success fw-bold">
+          <span>አሁን የከፈለው (Paid)፦</span>
+          <span>{{ student.amount_paid }} ETB</span>
+        </div>
+        {% if student.balance_due > 0 %}
+        <div class="d-flex justify-content-between text-danger fw-bold">
+          <span>ቀሪ ዕዳ (Balance Due)፦</span>
+          <span>{{ student.balance_due }} ETB</span>
+        </div>
+        {% endif %}
+      </div>
+
+      <div class="text-center mt-4">
+        <small class="text-muted">ይህ ደረሰኝ በኮምፒዩተር በራስ-ሰር የተዘጋጀ ነው። ሰነዱ ህጋዊ ነው።</small>
+      </div>
+
+      <div class="text-center mt-3 no-print">
+        <button onclick="window.print()" class="btn btn-primary fw-bold me-2"><i class="bi bi-printer"></i> አትም (Print)</button>
+        <button onclick="window.close()" class="btn btn-secondary fw-bold">ዝጋ (Close)</button>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>

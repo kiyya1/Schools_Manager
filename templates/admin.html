@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="am">
+<head>
+  <meta charset="UTF-8">
+  <title>🎓 Wabi School — Admin Dashboard</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+  <style>
+    body { background-color: #f4f6f9; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    .card-custom { border-radius: 12px; border: none; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
+  </style>
+</head>
+<body class="py-4">
+
+  <nav class="navbar navbar-dark bg-primary mb-4 shadow-sm">
+    <div class="container-fluid px-4">
+      <span class="navbar-brand fw-bold fs-4"><i class="bi bi-person-badge-fill me-2"></i>🎓 Wabi School — Admin Dashboard</span>
+      <div>
+        <button class="btn btn-light btn-sm fw-bold me-2" data-bs-toggle="modal" data-bs-target="#changePwModal">
+          <i class="bi bi-key-fill me-1"></i>🔑 Change Password
+        </button>
+        <a href="/" class="btn btn-outline-light btn-sm fw-bold me-2"><i class="bi bi-plus-circle me-1"></i>የምዝገባ ገፅ</a>
+        <a href="/logout" class="btn btn-danger btn-sm fw-bold"><i class="bi bi-box-arrow-right me-1"></i>ውጣ</a>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container-fluid px-4">
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }} alert-dismissible fade show shadow-sm" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <!-- FEE SETTINGS CARD -->
+    <div class="row mb-4">
+      <div class="col-md-12">
+        <div class="card card-custom p-3 border-start border-primary border-4">
+          <div class="d-flex justify-content-between align-items-center">
+            <div>
+              <h5 class="fw-bold text-primary mb-1"><i class="bi bi-gear-fill me-2"></i>የአሁኑ የተቀመጡ ክፍያዎች (Active Fee Rates)</h5>
+              <p class="mb-0 text-muted">
+                ወርሃዊ ትምህርት ክፍያ፦ <strong class="text-dark">{{ tuition_fee }} ETB</strong> | 
+                ወርሃዊ የስኩል ባስ ክፍያ፦ <strong class="text-dark">{{ bus_fee }} ETB</strong>
+              </p>
+            </div>
+            <button class="btn btn-primary btn-sm fw-bold" data-bs-toggle="modal" data-bs-target="#editFeeModal">
+              <i class="bi bi-pencil-square me-1"></i>የክፍያ መጠን ቀይር (Edit Rates)
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- STUDENT LIST TABLE -->
+    <div class="card card-custom p-3">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h4 class="fw-bold text-primary mb-0"><i class="bi bi-people-fill me-2"></i>የተመዘገቡ ተማሪዎች ዝርዝር</h4>
+        <span class="badge bg-primary fs-6">ጠቅላላ ተማሪዎች፦ {{ students|length }}</span>
+      </div>
+
+      <div class="table-responsive">
+        <table class="table table-hover align-middle">
+          <thead class="table-primary">
+            <tr>
+              <th>#</th>
+              <th>የተማሪ ስም</th>
+              <th>ክፍልና ሴክሽን</th>
+              <th>ስልክ</th>
+              <th>ስኩል ባስ</th>
+              <th>የባስ ክፍያ</th>
+              <th>ጠቅላላ ክፍያ</th>
+              <th>የተከፈለ</th>
+              <th>ቀሪ ዕዳ</th>
+              <th>ተግባር (Actions)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for student in students %}
+            <tr>
+              <td>{{ student.id }}</td>
+              <td class="fw-bold">{{ student.full_name }}</td>
+              <td><span class="badge bg-info text-dark">{{ student.grade }} ({{ student.section }})</span></td>
+              <td>{{ student.phone }}</td>
+              <td>
+                {% if 'እፈልጋለሁ' in student.bus_service %}
+                  <span class="badge bg-success">እፈልጋለሁ</span>
+                {% else %}
+                  <span class="badge bg-secondary">አልፈልግም</span>
+                {% endif %}
+              </td>
+              <td class="fw-bold text-primary">{{ student.bus_fee }} ETB</td>
+              <td class="fw-bold text-dark">{{ student.total_expected }} ETB</td>
+              <td class="fw-bold text-success">{{ student.amount_paid }} ETB</td>
+              <td class="fw-bold text-danger">{{ student.balance_due }} ETB</td>
+              <td>
+                <!-- PRINT RECEIPT BUTTON -->
+                <a href="/receipt/{{ student.id }}" target="_blank" class="btn btn-sm btn-success me-1" title="ደረሰኝ አትም">
+                  <i class="bi bi-printer-fill"></i> Receipt
+                </a>
+                <!-- DELETE BUTTON -->
+                <a href="/delete_student/{{ student.id }}" class="btn btn-sm btn-outline-danger" onclick="return confirm('እርግጠኛ ነዎት ይህ ተማሪ ይጥፋ?')" title="አጥፋ">
+                  <i class="bi bi-trash"></i>
+                </a>
+              </td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="10" class="text-center py-4 text-muted">ምንም የተመዘገበ ተማሪ የለም።</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- EDIT FEE MODAL -->
+  <div class="modal fade" id="editFeeModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title fw-bold"><i class="bi bi-cash-stack me-2"></i>የክፍያ ዋጋዎችን ማስተካከያ</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <form action="/update_fees" method="POST">
+          <div class="modal-body">
+            <div class="mb-3">
+              <label class="form-label fw-bold">ወርሃዊ የትምህርት ክፍያ (Tuition Fee)</label>
+              <input type="number" step="0.01" name="tuition_fee" class="form-control" value="{{ tuition_fee }}" required>
+            </div>
+            <div class="mb-3">
+              <label class="form-label fw-bold">ወርሃዊ የስኩል ባስ ክፍያ (Bus Fee)</label>
+              <input type="number" step="0.01" name="bus_fee" class="form-control" value="{{ bus_fee }}" required>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ሰርዝ</button>
+            <button type="submit" class="btn btn-primary fw-bold">💾 አዘምን (Update)</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- CHANGE PASSWORD MODAL -->
+  <div class="modal fade" id="changePwModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title fw-bold"><i class="bi bi-shield-lock me-2"></i>የAdmin ፓስወርድ መቀየሪያ</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <form action="/change_password" method="POST">
+          <div class="modal-body">
+            <div class="mb-3">
+              <label class="form-label fw-bold">የድሮ ፓስወርድ (Old Password)</label>
+              <input type="password" name="old_password" class="form-control" required>
+            </div>
+            <div class="mb-3">
+              <label class="form-label fw-bold">አዲስ ፓስወርድ (New Password)</label>
+              <input type="password" name="new_password" class="form-control" required>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ሰርዝ</button>
+            <button type="submit" class="btn btn-primary fw-bold">💾 ቀይር (Save)</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
