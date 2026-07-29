@@ -1,127 +1,131 @@
 <!DOCTYPE html>
-<html lang="am">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ደረሰኝ #REC-{{ "%04d"|format(student.id) }}</title>
+    <title>Payment Receipt - {{ student.full_name }}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        body { background-color: #f4f6f9; font-family: Arial, sans-serif; color: #212529; }
-        .receipt-card { max-width: 650px; margin: 30px auto; background: #ffffff; border-radius: 12px; padding: 30px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
-        .receipt-header { border-bottom: 2px dashed #dee2e6; padding-bottom: 15px; margin-bottom: 20px; }
-        .receipt-footer { border-top: 2px dashed #dee2e6; padding-top: 15px; margin-top: 20px; }
-        .badge-custom { padding: 5px 10px; border-radius: 4px; background-color: #0d6efd; color: white; font-weight: bold; }
+        body {
+            background-color: #f8f9fa;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .receipt-card {
+            max-width: 650px;
+            margin: 40px auto;
+            border: none;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            border-radius: 12px;
+            background: #ffffff;
+        }
+        .receipt-header {
+            background: #0d6efd;
+            color: #ffffff;
+            padding: 25px;
+            border-top-left-radius: 12px;
+            border-top-right-radius: 12px;
+        }
+        .print-btn {
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
         @media print {
-            body { background-color: #ffffff !important; }
-            .no-print { display: none !important; }
-            .receipt-card { box-shadow: none !important; border: none !important; margin: 0 !important; padding: 0 !important; width: 100% !important; max-width: 100% !important; }
+            .no-print {
+                display: none !important;
+            }
+            body {
+                background-color: #ffffff;
+            }
+            .receipt-card {
+                box-shadow: none;
+                margin: 0;
+                width: 100%;
+                max-width: 100%;
+            }
         }
     </style>
 </head>
 <body>
 
-    <div class="container">
-        {% if not is_pdf %}
-        <div class="text-center mt-4 mb-2 no-print">
-            <button onclick="window.print()" class="btn btn-primary btn-lg me-2 fw-bold mb-2">🖨️ ደረሰኝ አትም (Print)</button>
-            <a href="/download_receipt/{{ student.id }}" class="btn btn-success btn-lg me-2 fw-bold mb-2">📥 PDF አውርድ (Download PDF)</a>
-            <a href="/" class="btn btn-outline-secondary btn-lg mb-2">ወደ ምዝገባ ተመለስ</a>
+<div class="container">
+    <div class="receipt-card p-0">
+        <!-- Header -->
+        <div class="receipt-header text-center">
+            <h3 class="fw-bold mb-1">{{ settings.system_name if settings and settings.system_name else "Kiyya Students Manager" }}</h3>
+            <p class="mb-0 opacity-75">Official Payment Receipt</p>
         </div>
-        {% endif %}
 
-        <div class="receipt-card">
-            <div class="receipt-header text-center">
-                <h2 class="fw-bold text-primary mb-1">🎓 Wabi School</h2>
-                <p class="text-muted mb-1">{{ settings.default_address if settings and settings.default_address else 'አቃቂ ቃሊቲ ወረዳ 09' }}</p>
-                <h4 class="fw-bold text-dark mt-2 mb-0">የክፍያ ደረሰኝ (Official Receipt)</h4>
-            </div>
-
-            <div class="row mb-3">
+        <div class="p-4">
+            <!-- Info Section -->
+            <div class="row mb-4">
                 <div class="col-6">
-                    <small class="text-muted d-block">የደረሰኝ ቁጥር (Receipt No):</small>
-                    <strong class="fs-6 text-primary">#REC-{{ "%04d"|format(student.id) }}</strong>
+                    <small class="text-muted d-block">STUDENT DETAILS</small>
+                    <strong class="fs-5 text-dark">{{ student.full_name }}</strong>
+                    <div class="text-secondary small">Grade: {{ student.grade }}</div>
+                    <div class="text-secondary small">Phone: {{ student.phone_number }}</div>
                 </div>
                 <div class="col-6 text-end">
-                    <small class="text-muted d-block">ቀን (Date):</small>
-                    <strong>{{ student.registration_date if student.registration_date else '2026-07-29' }}</strong>
+                    <small class="text-muted d-block">RECEIPT INFO</small>
+                    <div class="fw-semibold">Receipt #: REC-{{ "%04d" % student.id }}</div>
+                    <div class="text-secondary small">Date: {{ student.created_at.strftime('%Y-%m-%d') if student.created_at else 'N/A' }}</div>
+                    <div class="text-secondary small">Type: {{ student.payment_type }}</div>
                 </div>
             </div>
 
-            <div class="bg-light p-3 rounded mb-4 border">
-                <div class="row g-2">
-                    <div class="col-6"><strong>የተማሪው ስም:</strong> {{ student.full_name }}</div>
-                    <div class="col-6">
-                        <strong>ክፍል:</strong> 
-                        <span class="badge-custom">
-                            {{ student.grade }}
-                            {% if student.section %}- {{ student.section }}{% endif %}
-                        </span>
-                    </div>
-                    <div class="col-6"><strong>ስልክ ቁጥር:</strong> {{ student.phone }}</div>
-                    <div class="col-6"><strong>የባስ አገልግሎት:</strong> {{ student.bus_service }}</div>
+            <!-- Table Section -->
+            <div class="table-responsive">
+                <table class="table table-bordered align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Description</th>
+                            <th class="text-end">Amount (ETB)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>School Fee ({{ student.payment_type }})</td>
+                            <td class="text-end">
+                                {{ "{:,.2f}".format(base_fee if base_fee is defined and base_fee is not none else 0.0) }}
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>Bus Transport Service ({{ student.bus_service }})</td>
+                            <td class="text-end">
+                                {{ "{:,.2f}".format(bus_fee if bus_fee is defined and bus_fee is not none else 0.0) }}
+                            </td>
+                        </tr>
+                        <tr class="table-secondary fw-bold">
+                            <td>Total Expected Fee</td>
+                            <td class="text-end">
+                                {{ "{:,.2f}".format(total_expected if total_expected is defined and total_expected is not none else 0.0) }}
+                            </td>
+                        </tr>
+                        <tr class="table-success fw-bold text-success">
+                            <td>Amount Paid</td>
+                            <td class="text-end">
+                                {{ "{:,.2f}".format(student.amount_paid if student.amount_paid else 0.0) }}
+                            </td>
+                        </tr>
+                        <tr class="table-danger fw-bold text-danger">
+                            <td>Remaining Balance</td>
+                            <td class="text-end">
+                                {{ "{:,.2f}".format(remaining_balance if remaining_balance is defined and remaining_balance is not none else 0.0) }}
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Footer Message & Actions -->
+            <div class="text-center mt-4">
+                <p class="text-muted small mb-3">Thank you for your payment!</p>
+                <div class="no-print d-flex justify-content-center gap-2">
+                    <a href="{{ url_for('index') }}" class="btn btn-outline-secondary px-4">Back</a>
+                    <button onclick="window.print()" class="btn btn-primary print-btn px-4">Print Receipt</button>
                 </div>
-            </div>
-
-            <table class="table table-bordered align-middle">
-                <thead class="table-light">
-                    <tr>
-                        <th>የክፍያ ዝርዝር (Description)</th>
-                        <th class="text-end">መጠን (ETB)</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td>መሰረታዊ የትምህርት ክፍያ ({{ student.payment_type }})</td>
-                        <td class="text-end">{{ "{:,.2f}".format(base_fee if base_fee is defined and base_fee else student.amount_paid) }}</td>
-                    </tr>
-                    {% if bus_fee is defined and bus_fee and bus_fee > 0 %}
-                    <tr>
-                        <td>የትራንስፖርት / ባስ ክፍያ</td>
-                        <td class="text-end">{{ "{:,.2f}".format(bus_fee) }}</td>
-                    </tr>
-                    {% endif %}
-                    
-                    {% if total_expected is defined and total_expected %}
-                    <tr class="fw-bold table-active">
-                        <td>ጠቅላላ የሚጠበቅ ክፍያ (Total Expected)</td>
-                        <td class="text-end">{{ "{:,.2f}".format(total_expected) }}</td>
-                    </tr>
-                    {% endif %}
-
-                    <tr class="text-success fw-bold">
-                        <td>የተከፈለ መጠን (Amount Paid) [{{ student.payment_method }}]</td>
-                        <td class="text-end">{{ "{:,.2f}".format(student.amount_paid if student.amount_paid else 0) }}</td>
-                    </tr>
-
-                    {% if remaining_balance is defined and remaining_balance and remaining_balance > 0 %}
-                    <tr class="text-danger fw-bold">
-                        <td>ቀሪ ያልተከፈለ (Remaining Balance)</td>
-                        <td class="text-end">{{ "{:,.2f}".format(remaining_balance) }}</td>
-                    </tr>
-                    {% endif %}
-                </tbody>
-            </table>
-
-            {% if student.ft_approval_no %}
-            <div class="mb-3">
-                <small class="text-muted">የትራንዛክሽን / Approval No:</small>
-                <code class="fw-bold text-dark">{{ student.ft_approval_no }}</code>
-            </div>
-            {% endif %}
-
-            {% if student.receipt_image %}
-            <div class="mb-3 border p-2 rounded text-center">
-                <small class="text-muted d-block mb-1">የተያያዘ የክፍያ ማረጋገጫ ፎቶ፦</small>
-                <img src="{{ url_for('uploaded_file', filename=student.receipt_image) }}" alt="Receipt Image" class="img-fluid rounded border" style="max-height: 200px;">
-            </div>
-            {% endif %}
-
-            <div class="receipt-footer text-center">
-                <p class="fw-bold mb-1">ስለመረጡን እናመሰግናለን!</p>
-                <small class="text-muted">ይህ ደረሰኝ በሲስተም በራስ-ሰር የተዘጋጀ ህጋዊ ማስረጃ ነው።</small>
             </div>
         </div>
     </div>
+</div>
 
 </body>
 </html>
