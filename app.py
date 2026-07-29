@@ -2,6 +2,7 @@ import os
 import io
 import logging
 import sqlite3
+from datetime import datetime
 from flask import Flask, render_template, request, redirect, url_for, flash, session, send_file, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.utils import secure_filename
@@ -9,9 +10,8 @@ from xhtml2pdf import pisa
 
 app = Flask(__name__)
 app.secret_key = "super_secret_wabi_key"
-app.config['DEBUG'] = True
 
-# Enable basic logging
+# Logging configuration for debugging on Render
 logging.basicConfig(level=logging.INFO)
 
 # Image Upload Configuration
@@ -25,7 +25,7 @@ if not os.path.exists(UPLOAD_FOLDER):
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-# Database Configuration - using students.db
+# Database Configuration
 basedir = os.path.abspath(os.path.dirname(__file__))
 db_path = os.path.join(basedir, 'students.db')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + db_path
@@ -38,6 +38,7 @@ class Student(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     full_name = db.Column(db.String(100), nullable=False)
     grade = db.Column(db.String(50), nullable=False)
+    section = db.Column(db.String(50), nullable=True)
     phone = db.Column(db.String(20), nullable=False)
     address = db.Column(db.String(200), nullable=True)
     payment_type = db.Column(db.String(50), nullable=False)
@@ -59,30 +60,39 @@ class Setting(db.Model):
     cbe_account_no = db.Column(db.String(50), default="1000123456789 (CBE - Wabi School)")
     other_bank_info = db.Column(db.String(100), default="BOA: 45678901 / Awash: 987654321")
 
-# Safe Migration Function
-def check_and_migrate_db():
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    cursor.execute("PRAGMA table_info(student)")
-    columns = [column[1] for column in cursor.fetchall()]
-    if 'receipt_image' not in columns and len(columns) > 0:
-        cursor.execute("ALTER TABLE student ADD COLUMN receipt_image VARCHAR(200)")
-        conn.commit()
-    conn.close()
+# Ensure table migration on Render startup to prevent Missing Column Errors
+def auto_migrate():
+    try:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA table_info(student)")
+        columns = [column[1] for column in cursor.fetchall()]
+        
+        if columns:
+            if 'receipt_image' not in columns:
+                cursor.execute("ALTER TABLE student ADD COLUMN receipt_image VARCHAR(200)")
+            if 'registration_date' not in columns:
+                cursor.execute("ALTER TABLE student ADD COLUMN registration_date VARCHAR(50)")
+            if 'section' not in columns:
+                cursor.execute("ALTER TABLE student ADD COLUMN section VARCHAR(50)")
+            conn.commit()
+            app.logger.info("Database migration successfully verified!")
+            
+        conn.close()
+    except Exception as e:
+        app.logger.error(f"Migration error: {e}")
 
 with app.app_context():
     db.create_all()
-    try:
-        check_and_migrate_db()
-    except Exception as e:
-        app.logger.error(f"Migration Notice: {e}")
-
+    auto_migrate()
+    
     if not Setting.query.first():
         default_settings = Setting()
         db.session.add(default_settings)
         db.session.commit()
 
-# Routes
+# --- Routes ---
+
 @app.route('/')
 def home():
     settings = Setting.query.first()
@@ -94,24 +104,24 @@ def uploaded_file(filename):
 
 @app.route('/add_student', methods=['POST'])
 def add_student():
-    from datetime import datetime
     full_name = request.form.get('full_name')
     grade = request.form.get('grade')
+    section = request.form.get('section', '')
     phone = request.form.get('phone')
     address = request.form.get('address')
     payment_type = request.form.get('payment_type')
-    bus_service = request.form.get('bus_service')
+    bus_service = request.form.get('bus_service', 'Not Needed')
     payment_method = request.form.get('payment_method')
     
     try:
         amount_paid = float(request.form.get('amount_paid', 0))
-    except ValueError:
+    except (ValueError, TypeError):
         amount_paid = 0.0
 
     ft_approval_no = request.form.get('ft_approval_no')
     today_str = datetime.now().strftime("%Y-%m-%d")
 
-    # Handle File Upload
+    # File Upload Processing
     file = request.files.get('receipt_image')
     filename = None
     if file and allowed_file(file.filename):
@@ -121,6 +131,7 @@ def add_student():
     new_student = Student(
         full_name=full_name,
         grade=grade,
+        section=section,
         phone=phone,
         address=address,
         payment_type=payment_type,
@@ -140,13 +151,62 @@ def add_student():
 def receipt(student_id):
     student = Student.query.get_or_404(student_id)
     settings = Setting.query.first()
-    return render_template('receipt.html', student=student, settings=settings)
+    
+    if not settings:
+        settings = Setting()
+        db.session.add(settings)
+        db.session.commit()
 
-@app.route('/download_receipt/<int:student_id>')
-def download_receipt(student_id):
+    # Fee Calculations
+    if student.payment_type == 'Term':
+        base_fee = getattr(settings, 'term_fee', 8000.0)
+    else:
+        base_fee = getattr(settings, 'monthly_fee', 3000.0)
+
+    if student.bus_service and student.bus_service != 'Not Needed':
+        bus_fee = getattr(settings, 'bus_fee', 1500.0)
+    else:
+        bus_fee = 0.0
+
+    total_expected = base_fee + bus_fee
+    amount_paid = student.amount_paid if student.amount_paid else 0.0
+    remaining_balance = max(0.0, total_expected - amount_paid)
+
+    return render_template(
+        'receipt.html', 
+        student=student, 
+        settings=settings,
+        base_fee=base_fee,
+        bus_fee=bus_fee,
+        total_expected=total_expected,
+        remaining_balance=remaining_balance,
+        is_pdf=False
+    )
+
+@app.route('/download_receipt_pdf/<int:student_id>')
+def download_receipt_pdf(student_id):
     student = Student.query.get_or_404(student_id)
     settings = Setting.query.first()
-    rendered_html = render_template('receipt.html', student=student, settings=settings, pdf_mode=True)
+    
+    if not settings:
+        settings = Setting()
+
+    base_fee = settings.term_fee if student.payment_type == 'Term' else settings.monthly_fee
+    bus_fee = settings.bus_fee if (student.bus_service and student.bus_service != 'Not Needed') else 0.0
+    total_expected = base_fee + bus_fee
+    amount_paid = student.amount_paid if student.amount_paid else 0.0
+    remaining_balance = max(0.0, total_expected - amount_paid)
+
+    rendered_html = render_template(
+        'receipt.html', 
+        student=student, 
+        settings=settings,
+        base_fee=base_fee,
+        bus_fee=bus_fee,
+        total_expected=total_expected,
+        remaining_balance=remaining_balance,
+        is_pdf=True
+    )
     
     pdf_buffer = io.BytesIO()
     pisa_status = pisa.CreatePDF(io.StringIO(rendered_html), dest=pdf_buffer)
@@ -197,7 +257,7 @@ def update_settings():
         settings.term_fee = float(request.form.get('term_fee', 8000))
         settings.bus_fee = float(request.form.get('bus_fee', 1500))
         settings.class_capacity = int(request.form.get('class_capacity', 30))
-    except ValueError:
+    except (ValueError, TypeError):
         pass
 
     settings.telebirr_no = request.form.get('telebirr_no', '0911223344')
@@ -226,4 +286,4 @@ def delete_student(id):
     return redirect('/admin')
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(debug=True)
