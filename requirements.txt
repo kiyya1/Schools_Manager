@@ -1,5 +1,5 @@
-xhtml2pdf==0.2.15
 Flask
 Flask-SQLAlchemy
+Flask-Migrate
 xhtml2pdf
 gunicorn
