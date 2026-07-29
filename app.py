@@ -1,33 +1,52 @@
 import os
-from io import BytesIO
-from datetime import datetime
-from flask import Flask, render_template, request, redirect, url_for, flash, session, send_file, make_response
+import io
+import logging
+import sqlite3
+from flask import Flask, render_template, request, redirect, url_for, flash, session, send_file, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
+from werkzeug.utils import secure_filename
 from xhtml2pdf import pisa
 
 app = Flask(__name__)
-app.secret_key = 'super-secret-key-change-this'
+app.secret_key = "super_secret_wabi_key"
+app.config['DEBUG'] = True
 
-BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(BASE_DIR, 'database.db')
+# Enable basic logging
+logging.basicConfig(level=logging.INFO)
+
+# Image Upload Configuration
+UPLOAD_FOLDER = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'uploads')
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf'}
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+# Database Configuration - using students.db
+basedir = os.path.abspath(os.path.dirname(__file__))
+db_path = os.path.join(basedir, 'students.db')
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + db_path
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
 
+# Database Models
 class Student(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     full_name = db.Column(db.String(100), nullable=False)
     grade = db.Column(db.String(50), nullable=False)
-    section = db.Column(db.String(10), nullable=False, default='A')
     phone = db.Column(db.String(20), nullable=False)
-    bus_service = db.Column(db.String(50), nullable=True)
     address = db.Column(db.String(200), nullable=True)
     payment_type = db.Column(db.String(50), nullable=False)
+    bus_service = db.Column(db.String(50), default="Not Needed")
     payment_method = db.Column(db.String(50), nullable=False)
+    amount_paid = db.Column(db.Float, nullable=False)
     ft_approval_no = db.Column(db.String(100), nullable=True)
-    amount_paid = db.Column(db.Float, nullable=False, default=0.0)
-    status = db.Column(db.String(20), default='Pending')
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    receipt_image = db.Column(db.String(200), nullable=True)
+    registration_date = db.Column(db.String(50), nullable=True)
 
 class Setting(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -36,100 +55,119 @@ class Setting(db.Model):
     bus_fee = db.Column(db.Float, default=1500.0)
     class_capacity = db.Column(db.Integer, default=30)
     default_address = db.Column(db.String(200), default="አቃቂ ቃሊቲ ወረዳ 09")
+    telebirr_no = db.Column(db.String(50), default="0911223344")
+    cbe_account_no = db.Column(db.String(50), default="1000123456789 (CBE - Wabi School)")
+    other_bank_info = db.Column(db.String(100), default="BOA: 45678901 / Awash: 987654321")
 
-class AdminUser(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(50), unique=True, nullable=False)
-    password = db.Column(db.String(100), nullable=False)
+# Safe Migration Function
+def check_and_migrate_db():
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA table_info(student)")
+    columns = [column[1] for column in cursor.fetchall()]
+    if 'receipt_image' not in columns and len(columns) > 0:
+        cursor.execute("ALTER TABLE student ADD COLUMN receipt_image VARCHAR(200)")
+        conn.commit()
+    conn.close()
 
 with app.app_context():
     db.create_all()
-    if not AdminUser.query.filter_by(username='admin').first():
-        db.session.add(AdminUser(username='admin', password='adminpassword'))
+    try:
+        check_and_migrate_db()
+    except Exception as e:
+        app.logger.error(f"Migration Notice: {e}")
+
     if not Setting.query.first():
-        db.session.add(Setting())
-    db.session.commit()
+        default_settings = Setting()
+        db.session.add(default_settings)
+        db.session.commit()
 
-def get_next_section(grade, capacity):
-    existing_count = Student.query.filter_by(grade=grade).count()
-    section_index = existing_count // capacity
-    return chr(65 + section_index)
-
+# Routes
 @app.route('/')
-@app.route('/register')
-def register():
+def home():
     settings = Setting.query.first()
     return render_template('register.html', settings=settings)
 
+@app.route('/uploads/<filename>')
+def uploaded_file(filename):
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+
 @app.route('/add_student', methods=['POST'])
 def add_student():
-    settings = Setting.query.first()
-    capacity = settings.class_capacity if settings else 30
-
+    from datetime import datetime
+    full_name = request.form.get('full_name')
     grade = request.form.get('grade')
-    assigned_section = get_next_section(grade, capacity)
+    phone = request.form.get('phone')
+    address = request.form.get('address')
+    payment_type = request.form.get('payment_type')
+    bus_service = request.form.get('bus_service')
+    payment_method = request.form.get('payment_method')
+    
+    try:
+        amount_paid = float(request.form.get('amount_paid', 0))
+    except ValueError:
+        amount_paid = 0.0
+
+    ft_approval_no = request.form.get('ft_approval_no')
+    today_str = datetime.now().strftime("%Y-%m-%d")
+
+    # Handle File Upload
+    file = request.files.get('receipt_image')
+    filename = None
+    if file and allowed_file(file.filename):
+        filename = secure_filename(f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{file.filename}")
+        file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
 
     new_student = Student(
-        full_name=request.form.get('full_name'),
+        full_name=full_name,
         grade=grade,
-        section=assigned_section,
-        phone=request.form.get('phone'),
-        bus_service=request.form.get('bus_service'),
-        address=request.form.get('address'),
-        payment_type=request.form.get('payment_type'),
-        payment_method=request.form.get('payment_method'),
-        ft_approval_no=request.form.get('ft_approval_no'),
-        amount_paid=float(request.form.get('amount_paid', 0))
+        phone=phone,
+        address=address,
+        payment_type=payment_type,
+        bus_service=bus_service,
+        payment_method=payment_method,
+        amount_paid=amount_paid,
+        ft_approval_no=ft_approval_no,
+        receipt_image=filename,
+        registration_date=today_str
     )
     db.session.add(new_student)
     db.session.commit()
 
-    flash('ተማሪው በስኬት ተመዝግቧል!', 'success')
-    return redirect(url_for('view_receipt', student_id=new_student.id))
+    return redirect(url_for('receipt', student_id=new_student.id))
 
 @app.route('/receipt/<int:student_id>')
-def view_receipt(student_id):
+def receipt(student_id):
     student = Student.query.get_or_404(student_id)
     settings = Setting.query.first()
-    
-    base_fee = (settings.term_fee if settings else 8000.0) if student.payment_type == 'Term Fee' else (settings.monthly_fee if settings else 3000.0)
-    bus_fee = (settings.bus_fee if settings else 1500.0) if (student.bus_service and ('Bus Needed' in student.bus_service or 'እፈልጋለሁ' in student.bus_service)) else 0.0
-    total_expected = base_fee + bus_fee
-    remaining_balance = max(0.0, total_expected - student.amount_paid)
+    return render_template('receipt.html', student=student, settings=settings)
 
-    return render_template('receipt.html', student=student, settings=settings, base_fee=base_fee, bus_fee=bus_fee, total_expected=total_expected, remaining_balance=remaining_balance)
-
-@app.route('/download_receipt_pdf/<int:student_id>')
-def download_receipt_pdf(student_id):
+@app.route('/download_receipt/<int:student_id>')
+def download_receipt(student_id):
     student = Student.query.get_or_404(student_id)
     settings = Setting.query.first()
+    rendered_html = render_template('receipt.html', student=student, settings=settings, pdf_mode=True)
     
-    base_fee = (settings.term_fee if settings else 8000.0) if student.payment_type == 'Term Fee' else (settings.monthly_fee if settings else 3000.0)
-    bus_fee = (settings.bus_fee if settings else 1500.0) if (student.bus_service and ('Bus Needed' in student.bus_service or 'እፈልጋለሁ' in student.bus_service)) else 0.0
-    total_expected = base_fee + bus_fee
-    remaining_balance = max(0.0, total_expected - student.amount_paid)
-
-    rendered_html = render_template('receipt.html', student=student, settings=settings, base_fee=base_fee, bus_fee=bus_fee, total_expected=total_expected, remaining_balance=remaining_balance, is_pdf=True)
-    
-    pdf_out = BytesIO()
-    pisa_status = pisa.CreatePDF(BytesIO(rendered_html.encode('utf-8')), dest=pdf_out)
+    pdf_buffer = io.BytesIO()
+    pisa_status = pisa.CreatePDF(io.StringIO(rendered_html), dest=pdf_buffer)
     
     if pisa_status.err:
-        return "PDF መፍጠር አልተቻለም", 500
-
-    response = make_response(pdf_out.getvalue())
-    response.headers['Content-Type'] = 'application/pdf'
-    response.headers['Content-Disposition'] = f'attachment; filename=Receipt_{student.id}.pdf'
-    return response
+        return "PDF መፍጠር አልተቻለም"
+    
+    pdf_buffer.seek(0)
+    filename = f"Receipt_{student.full_name.replace(' ', '_')}.pdf"
+    return send_file(pdf_buffer, mimetype='application/pdf', as_attachment=True, download_name=filename)
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        user = AdminUser.query.filter_by(username=request.form.get('username'), password=request.form.get('password')).first()
-        if user:
+        username = request.form.get('username')
+        password = request.form.get('password')
+        if username == 'admin' and password == 'admin123':
             session['logged_in'] = True
             return redirect('/admin')
-        flash('የተሳሳተ የተጠቃሚ ስም ወይም የይለፍ ቃል!', 'danger')
+        else:
+            flash('ትክክለኛ ያልሆነ ስም ወይም ፓስወርድ!', 'danger')
     return render_template('login.html')
 
 @app.route('/logout')
@@ -141,32 +179,9 @@ def logout():
 def admin():
     if not session.get('logged_in'):
         return redirect('/login')
-
-    settings = Setting.query.first()
-    if not settings:
-        settings = Setting()
-        db.session.add(settings)
-        db.session.commit()
-
     students = Student.query.order_by(Student.id.desc()).all()
-    total_students = len(students)
-    total_paid = sum(s.amount_paid for s in students if s.amount_paid)
-    
-    student_data = []
-    total_expected = 0.0
-
-    for s in students:
-        base_fee = settings.term_fee if s.payment_type == 'Term Fee' else settings.monthly_fee
-        bus_addon = settings.bus_fee if (s.bus_service and ('Bus Needed' in s.bus_service or 'እፈልጋለሁ' in s.bus_service)) else 0.0
-        expected = base_fee + bus_addon
-        remaining = max(0.0, expected - s.amount_paid)
-
-        total_expected += expected
-        student_data.append({'student': s, 'expected': expected, 'paid': s.amount_paid, 'remaining': remaining})
-
-    total_unpaid = max(0.0, total_expected - total_paid)
-
-    return render_template('admin.html', student_data=student_data, total_students=total_students, total_expected=total_expected, total_paid=total_paid, total_unpaid=total_unpaid, settings=settings)
+    settings = Setting.query.first()
+    return render_template('admin.html', students=students, settings=settings)
 
 @app.route('/update_settings', methods=['POST'])
 def update_settings():
@@ -177,37 +192,38 @@ def update_settings():
         settings = Setting()
         db.session.add(settings)
 
-    settings.monthly_fee = float(request.form.get('monthly_fee', 3000))
-    settings.term_fee = float(request.form.get('term_fee', 8000))
-    settings.bus_fee = float(request.form.get('bus_fee', 1500))
-    settings.class_capacity = int(request.form.get('class_capacity', 30))
+    try:
+        settings.monthly_fee = float(request.form.get('monthly_fee', 3000))
+        settings.term_fee = float(request.form.get('term_fee', 8000))
+        settings.bus_fee = float(request.form.get('bus_fee', 1500))
+        settings.class_capacity = int(request.form.get('class_capacity', 30))
+    except ValueError:
+        pass
+
+    settings.telebirr_no = request.form.get('telebirr_no', '0911223344')
+    settings.cbe_account_no = request.form.get('cbe_account_no', '1000123456789')
+    settings.other_bank_info = request.form.get('other_bank_info', '')
+
     db.session.commit()
     flash('ቅንብሮች በስኬት ተቀይረዋል!', 'success')
     return redirect('/admin')
 
-@app.route('/approve_student/<int:id>')
-def approve_student(id):
-    if not session.get('logged_in'): return redirect('/login')
-    s = Student.query.get_or_404(id)
-    s.status = 'Approved'
-    db.session.commit()
-    return redirect('/admin')
-
-@app.route('/reject_student/<int:id>')
-def reject_student(id):
-    if not session.get('logged_in'): return redirect('/login')
-    s = Student.query.get_or_404(id)
-    s.status = 'Rejected'
-    db.session.commit()
-    return redirect('/admin')
-
 @app.route('/delete_student/<int:id>')
 def delete_student(id):
-    if not session.get('logged_in'): return redirect('/login')
-    s = Student.query.get_or_404(id)
-    db.session.delete(s)
+    if not session.get('logged_in'):
+        return redirect('/login')
+    student = Student.query.get_or_404(id)
+    if student.receipt_image:
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], student.receipt_image)
+        if os.path.exists(filepath):
+            try:
+                os.remove(filepath)
+            except Exception:
+                pass
+    db.session.delete(student)
     db.session.commit()
+    flash('ተማሪው በስኬት ተሰርዟል!', 'info')
     return redirect('/admin')
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=True)
